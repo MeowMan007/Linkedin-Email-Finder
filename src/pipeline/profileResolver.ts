@@ -6,15 +6,17 @@
 import { LinkedInProfile } from '@/types';
 import { validateLinkedInUrl, extractLinkedInSlug } from '@/lib/validation';
 import { ProfileWaterfallEngine } from '@/providers';
-import { HunterProfileProvider } from '@/providers/hunter';
+import { ProspeoProfileProvider } from '@/providers/prospeo';
 import { ApolloProfileProvider } from '@/providers/apollo';
+import { HunterProfileProvider } from '@/providers/hunter';
 import { InHouseProfileProvider } from '@/providers/inhouse';
 import { logger } from '@/lib/logger';
 
 // Register profile providers in priority order
 const profileEngine = new ProfileWaterfallEngine([
-  HunterProfileProvider,
-  ApolloProfileProvider,
+  ProspeoProfileProvider, // Top priority: native LinkedIn profile + email API
+  ApolloProfileProvider,  // Second priority: Apollo people/match API
+  HunterProfileProvider,  // Third priority
   InHouseProfileProvider, // Self-contained fallback parsing
 ]);
 

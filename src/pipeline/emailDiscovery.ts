@@ -16,12 +16,12 @@ import { logger } from '@/lib/logger';
 // Register email providers in priority order
 const emailEngine = new WaterfallEngine(
   [
-    InHouseEmailProvider,   // In-house self-contained engine (0 external dependencies)
-    ProspeoEmailProvider,   // Has direct LinkedIn-to-email endpoint
-    HunterEmailProvider,    // Reliable, LinkedIn-aware
-    ApolloEmailProvider,    // Large database
-    SnovEmailProvider,      // Good fallback
-    FindymailEmailProvider, // Final fallback
+    ProspeoEmailProvider,   // Top priority: Prospeo LinkedIn Email API key
+    ApolloEmailProvider,    // Second priority: Apollo People Match API key
+    HunterEmailProvider,    // Third priority: Hunter API
+    InHouseEmailProvider,   // In-house engine fallback
+    SnovEmailProvider,      // Snov API fallback
+    FindymailEmailProvider, // Findymail fallback
   ],
   70 // Stop threshold — stop if confidence >= 70
 );

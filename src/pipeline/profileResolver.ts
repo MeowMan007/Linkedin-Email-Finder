@@ -8,12 +8,14 @@ import { validateLinkedInUrl, extractLinkedInSlug } from '@/lib/validation';
 import { ProfileWaterfallEngine } from '@/providers';
 import { HunterProfileProvider } from '@/providers/hunter';
 import { ApolloProfileProvider } from '@/providers/apollo';
+import { InHouseProfileProvider } from '@/providers/inhouse';
 import { logger } from '@/lib/logger';
 
 // Register profile providers in priority order
 const profileEngine = new ProfileWaterfallEngine([
   HunterProfileProvider,
   ApolloProfileProvider,
+  InHouseProfileProvider, // Self-contained fallback parsing
 ]);
 
 export interface ProfileResolverResult {

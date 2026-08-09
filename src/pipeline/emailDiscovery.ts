@@ -5,6 +5,7 @@
 
 import { LinkedInProfile, CompanyInfo, EmailResult } from '@/types';
 import { WaterfallEngine } from '@/providers';
+import { InHouseEmailProvider } from '@/providers/inhouse';
 import { HunterEmailProvider } from '@/providers/hunter';
 import { ApolloEmailProvider } from '@/providers/apollo';
 import { SnovEmailProvider } from '@/providers/snov';
@@ -15,6 +16,7 @@ import { logger } from '@/lib/logger';
 // Register email providers in priority order
 const emailEngine = new WaterfallEngine(
   [
+    InHouseEmailProvider,   // In-house self-contained engine (0 external dependencies)
     ProspeoEmailProvider,   // Has direct LinkedIn-to-email endpoint
     HunterEmailProvider,    // Reliable, LinkedIn-aware
     ApolloEmailProvider,    // Large database

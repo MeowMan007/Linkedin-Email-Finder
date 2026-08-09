@@ -5,6 +5,7 @@
 
 import { EmailResult, EmailStatus, EmailVerificationDetails } from '@/types';
 import { verifyEmailWithHunter } from '@/providers/hunter';
+import { verifyEmailViaSmtp } from '@/lib/smtpVerifier';
 import { validateEmailSyntax } from '@/lib/validation';
 import { logger } from '@/lib/logger';
 
@@ -15,9 +16,7 @@ export interface EmailVerificationResult {
 
 /**
  * Verify an email address and upgrade its status if verification passes.
- *
- * Verification is separate from discovery — an email returned by a provider
- * is NOT automatically verified.
+ * Uses Hunter API if available, or falls back to in-house direct SMTP verification.
  */
 export async function verifyEmail(
   emailResult: EmailResult,
@@ -44,7 +43,7 @@ export async function verifyEmail(
     };
   }
 
-  // Step 2: Try Hunter verification (if configured)
+  // Step 2: Verification (Hunter API or In-House SMTP Probe)
   let verificationDetails: EmailVerificationDetails = { syntaxValid: true };
   let newStatus: EmailStatus = emailResult.status;
   let upgraded = false;
@@ -69,7 +68,6 @@ export async function verifyEmail(
           | undefined,
       };
 
-      // Upgrade status based on verification result
       if (
         hunterVerification.valid &&
         !hunterVerification.details.disposable &&
@@ -84,14 +82,31 @@ export async function verifyEmail(
       } else if (!hunterVerification.valid) {
         newStatus = 'invalid';
       }
+    } else {
+      // In-House Direct SMTP Probe Fallback
+      const smtpRes = await verifyEmailViaSmtp(address);
+      verificationDetails = {
+        syntaxValid: true,
+        domainExists: smtpRes.statusCode !== null,
+        mxValid: smtpRes.mxServer !== null,
+        catchAll: smtpRes.isCatchAll,
+        providerVerified: true,
+        mailboxStatus: smtpRes.smtpValid ? 'valid' : 'unknown',
+      };
+
+      if (smtpRes.smtpValid && !smtpRes.isCatchAll) {
+        newStatus = 'verified';
+        upgraded = true;
+      } else if (smtpRes.isCatchAll) {
+        newStatus = 'catch_all';
+      }
     }
   } catch (err) {
-    logger.warn('email_verification_provider_error', {
+    logger.warn('email_verification_error', {
       operation: 'email_verification',
       request_id: requestId,
       error_type: err instanceof Error ? err.constructor.name : 'unknown',
     });
-    // Verification failed — keep original status, add partial details
     verificationDetails = { syntaxValid: true };
   }
 

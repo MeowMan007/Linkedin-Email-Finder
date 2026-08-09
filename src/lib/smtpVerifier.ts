@@ -17,7 +17,7 @@ export interface SmtpVerificationResult {
   reason?: string;
 }
 
-const DEFAULT_TIMEOUT = 5000; // 5 seconds per socket command
+const DEFAULT_TIMEOUT = 1500; // 1.5 seconds max per socket command (Vercel-safe)
 const SENDER_EMAIL = 'verify@leadresolve.com';
 const SENDER_DOMAIN = 'leadresolve.com';
 

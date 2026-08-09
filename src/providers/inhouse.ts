@@ -111,6 +111,8 @@ export const InHouseEmailProvider: EmailEnrichmentProvider = {
   },
 };
 
+import { extractPublicProfileMeta } from '@/lib/publicProfileScraper';
+
 // ----------------------------
 // In-House Profile Resolver
 // ----------------------------
@@ -126,16 +128,28 @@ export const InHouseProfileProvider: ProfileEnrichmentProvider = {
     const slug = extractLinkedInSlug(linkedinUrl);
     if (!slug) return null;
 
-    // Parses human name & title from LinkedIn slug / public metadata
-    const parts = slug.split('-');
+    // 1. Try public profile metadata extraction
+    const publicMeta = await extractPublicProfileMeta(linkedinUrl);
 
-    // Filter out common slug numbers / IDs
-    const nameParts = parts.filter((p) => !/^\d+$/.test(p));
+    if (publicMeta && publicMeta.fullName) {
+      return {
+        linkedinUrl,
+        linkedinSlug: slug,
+        firstName: publicMeta.firstName ?? '',
+        lastName: publicMeta.lastName ?? '',
+        fullName: publicMeta.fullName,
+        jobTitle: publicMeta.jobTitle ?? 'Professional',
+        currentCompany: publicMeta.companyName ?? inferCompanyFromSlug(slug),
+        headline: publicMeta.headline ?? 'Professional Profile',
+      };
+    }
 
-    if (nameParts.length < 2) return null;
+    // 2. Fallback: Parse human name & infer company from slug
+    const parts = slug.split('-').filter((p) => !/^\d+$/.test(p));
+    if (parts.length < 2) return null;
 
-    const firstName = capitalize(nameParts[0]);
-    const lastName = capitalize(nameParts[nameParts.length - 1]);
+    const firstName = capitalize(parts[0]);
+    const lastName = capitalize(parts[parts.length - 1]);
     const fullName = `${firstName} ${lastName}`;
 
     return {
@@ -144,10 +158,21 @@ export const InHouseProfileProvider: ProfileEnrichmentProvider = {
       firstName,
       lastName,
       fullName,
+      jobTitle: 'Professional',
+      currentCompany: inferCompanyFromSlug(slug),
       headline: 'Professional Profile',
     };
   },
 };
+
+function inferCompanyFromSlug(slug: string): string {
+  // If slug contains corporate patterns or domain hints
+  const parts = slug.split('-').filter((p) => !/^\d+$/.test(p));
+  if (parts.length > 2) {
+    return capitalize(parts[parts.length - 1]);
+  }
+  return 'Company';
+}
 
 function capitalize(str: string): string {
   if (!str) return '';

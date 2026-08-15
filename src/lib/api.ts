@@ -1,4 +1,33 @@
-import { EnrichmentResult, SearchRecord, StatsResponse, SmtpPingResult } from '@/types';
+import {
+  EnrichmentResult,
+  SearchRecord,
+  StatsResponse,
+  SmtpPingResult,
+  CompanyHrSearchResponse,
+} from '@/types';
+
+/**
+ * Search for HR / Recruiter profiles at a company and generate/verify their corporate emails.
+ */
+export async function searchCompanyHr(params: {
+  companyName: string;
+  companyDomain?: string;
+}): Promise<CompanyHrSearchResponse> {
+  const response = await fetch('/api/company-hr', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.success) {
+    const msg = data?.error?.message ?? 'Company HR discovery failed.';
+    throw new ApiError(msg, response.status, data?.error?.code);
+  }
+
+  return data.data as CompanyHrSearchResponse;
+}
 
 /**
  * Perform live direct SMTP mailbox verification and pinging for any email address.

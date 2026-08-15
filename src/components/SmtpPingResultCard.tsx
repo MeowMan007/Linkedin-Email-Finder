@@ -19,7 +19,6 @@ export function SmtpPingResultCard({ result, onPingAnother }: SmtpPingResultCard
           badgeBg: 'rgba(16, 185, 129, 0.12)',
           badgeBorder: 'rgba(16, 185, 129, 0.3)',
           badgeColor: '#10b981',
-          icon: '✓',
           title: 'GENUINE & DELIVERABLE MAILBOX',
           accent: '#10b981',
         };
@@ -28,7 +27,6 @@ export function SmtpPingResultCard({ result, onPingAnother }: SmtpPingResultCard
           badgeBg: 'rgba(245, 158, 11, 0.12)',
           badgeBorder: 'rgba(245, 158, 11, 0.3)',
           badgeColor: '#f59e0b',
-          icon: '⚡',
           title: 'CATCH-ALL DOMAIN (DELIVERABLE)',
           accent: '#f59e0b',
         };
@@ -37,7 +35,6 @@ export function SmtpPingResultCard({ result, onPingAnother }: SmtpPingResultCard
           badgeBg: 'rgba(239, 68, 68, 0.12)',
           badgeBorder: 'rgba(239, 68, 68, 0.3)',
           badgeColor: '#ef4444',
-          icon: '✕',
           title: 'INVALID / MAILBOX DOES NOT EXIST',
           accent: '#ef4444',
         };
@@ -46,7 +43,6 @@ export function SmtpPingResultCard({ result, onPingAnother }: SmtpPingResultCard
           badgeBg: 'rgba(156, 163, 175, 0.12)',
           badgeBorder: 'rgba(156, 163, 175, 0.3)',
           badgeColor: '#9ca3af',
-          icon: '⚠',
           title: 'SERVER RESTRICTED / UNVERIFIABLE',
           accent: '#9ca3af',
         };
@@ -73,7 +69,6 @@ export function SmtpPingResultCard({ result, onPingAnother }: SmtpPingResultCard
             letterSpacing: '0.04em',
             color: theme.badgeColor,
           }}>
-            <span style={{ fontSize: '14px', fontWeight: 900 }}>{theme.icon}</span>
             {theme.title}
           </div>
 

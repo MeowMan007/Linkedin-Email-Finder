@@ -279,6 +279,37 @@ export interface ValidationResult {
 }
 
 // ----------------------------
+// Company HR Discovery
+// ----------------------------
+
+export interface HrLead {
+  id: string;
+  fullName: string;
+  firstName: string;
+  lastName: string;
+  jobTitle: string;
+  location?: string;
+  profileUrl?: string;
+  primaryEmail: string;
+  emailStatus: EmailStatus;
+  smtpStatusCode?: number | null;
+  confidence: number;
+  isCatchAll: boolean;
+  permutations: CandidatePermutation[];
+}
+
+export interface CompanyHrSearchResponse {
+  companyName: string;
+  companyDomain: string;
+  mailProvider: string;
+  mxServer: string | null;
+  isCatchAll: boolean;
+  totalFound: number;
+  leads: HrLead[];
+  warnings?: string[];
+}
+
+// ----------------------------
 // Rate Limit
 // ----------------------------
 

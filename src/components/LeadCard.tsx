@@ -115,7 +115,7 @@ export function LeadCard({ result, onReverify, reverifying = false }: LeadCardPr
                   cursor: 'pointer',
                 }}
               >
-                {editing ? 'Cancel edit' : 'Edit & Re-verify ✎'}
+                {editing ? 'Cancel edit' : 'Edit & Re-verify'}
               </button>
             )}
           </div>

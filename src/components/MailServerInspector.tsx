@@ -43,7 +43,7 @@ export function MailServerInspector({ verification }: MailServerInspectorProps) 
           </svg>
           Mail Server & DNS Diagnostics
         </span>
-        <span>{open ? 'Hide details ▲' : 'Inspect server ▼'}</span>
+        <span>{open ? 'Hide details' : 'Inspect server'}</span>
       </button>
 
       {open && (

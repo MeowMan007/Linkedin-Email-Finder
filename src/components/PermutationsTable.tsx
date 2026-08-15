@@ -106,7 +106,7 @@ export function PermutationsTable({ candidates, primaryEmail }: PermutationsTabl
                       background: pingResult.verdict === 'genuine' ? 'rgba(16, 185, 129, 0.15)' : pingResult.verdict === 'catch_all' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)',
                       color: pingResult.verdict === 'genuine' ? '#10b981' : pingResult.verdict === 'catch_all' ? '#f59e0b' : '#ef4444',
                     }}>
-                      {pingResult.verdict === 'genuine' ? '✓ SMTP 250 OK (Genuine)' : pingResult.verdict === 'catch_all' ? '⚡ Catch-All' : `✕ Rejected (${pingResult.smtpStatusCode || '550'})`}
+                      {pingResult.verdict === 'genuine' ? 'SMTP 250 OK' : pingResult.verdict === 'catch_all' ? 'Catch-All' : `Rejected (${pingResult.smtpStatusCode || '550'})`}
                     </span>
                   )}
                 </div>
@@ -148,10 +148,10 @@ export function PermutationsTable({ candidates, primaryEmail }: PermutationsTabl
                           }}
                           className="animate-spin"
                         />
-                        Pinging...
+                        Verifying...
                       </>
                     ) : (
-                      '⚡ Ping SMTP'
+                      'Verify SMTP'
                     )}
                   </button>
                 )}

@@ -23,7 +23,7 @@ const BROWSER_USER_AGENTS = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0',
 ];
 
-function getRandomUserAgent(): string {
+export function getRandomUserAgent(): string {
   return BROWSER_USER_AGENTS[Math.floor(Math.random() * BROWSER_USER_AGENTS.length)];
 }
 

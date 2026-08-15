@@ -168,17 +168,20 @@ export const InHouseProfileProvider: ProfileEnrichmentProvider = {
         lastName: publicMeta.lastName ?? '',
         fullName: publicMeta.fullName,
         jobTitle: publicMeta.jobTitle ?? 'Professional',
-        currentCompany: publicMeta.companyName ?? inferCompanyFromSlug(slug),
+        // Only set company if the scraper actually found one — never guess from slug
+        currentCompany: publicMeta.companyName || undefined,
         headline: publicMeta.headline ?? 'Professional Profile',
         location: publicMeta.location,
       };
     }
 
-    // 2. Fallback: Parse human name & infer company from slug
+    // 2. Slug-based name parsing fallback
+    // We can extract a person's name from the slug but NOT their company.
+    // e.g. "parul-raj-72749a185" -> firstName=Parul, lastName=Raj, company=UNKNOWN
+    // The numeric suffix is a LinkedIn ID, NOT a company indicator.
     const cleaned = slug
-      .replace(/^[a-z]{2,3}-[a-z]{2,3}-/i, '') // strip country prefixes
       .replace(/-[a-f0-9]{6,}$/i, '') // strip trailing random hashes
-      .replace(/-\d+$/i, ''); // strip trailing numeric IDs
+      .replace(/-\d+$/i, '');          // strip trailing numeric IDs (e.g. 72749a185)
 
     const parts = cleaned.split('-').filter((p) => !/^\d+$/.test(p) && p.length > 0);
 
@@ -194,13 +197,13 @@ export const InHouseProfileProvider: ProfileEnrichmentProvider = {
         lastName,
         fullName,
         jobTitle: 'Professional',
-        currentCompany: inferCompanyFromSlug(slug),
+        // Company is unknown from slug alone — do NOT infer to avoid wrong emails
+        currentCompany: undefined,
         headline: 'Professional Profile',
       };
     }
 
     if (parts.length === 1 && parts[0].length >= 3) {
-      // Single word slug like 'satyanadella' or 'williamhgates'
       const singleWord = parts[0];
       const guessed = splitCompoundName(singleWord);
 
@@ -211,7 +214,7 @@ export const InHouseProfileProvider: ProfileEnrichmentProvider = {
         lastName: guessed.lastName,
         fullName: guessed.fullName,
         jobTitle: 'Professional',
-        currentCompany: inferCompanyFromSlug(slug),
+        currentCompany: undefined,
         headline: 'Professional Profile',
       };
     }

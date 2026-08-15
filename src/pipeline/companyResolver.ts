@@ -28,7 +28,9 @@ export async function resolveCompany(
       company: null,
       warnings,
       error:
-        'We couldn\'t confidently identify the person\'s current employer. Please check that the LinkedIn profile is public and lists a current employer.',
+        'We could not determine this person\'s current employer from their public profile. ' +
+        'This usually means the profile is private, has no current position listed, or LinkedIn is blocking our public search. ' +
+        'Try switching to the "Name & Company Direct" tab and enter their name and company manually.',
     };
   }
 

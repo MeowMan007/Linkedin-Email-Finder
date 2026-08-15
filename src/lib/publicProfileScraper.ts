@@ -72,9 +72,12 @@ export async function extractPublicProfileMeta(linkedinUrl: string): Promise<Ext
 
 /**
  * Fetch from DuckDuckGo HTML search
+ * Searches for the exact LinkedIn profile URL to avoid false positives from people with the same name at different companies.
  */
 async function fetchDuckDuckGoSnippet(slug: string): Promise<ExtractedPublicMeta | null> {
-  const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(`site:linkedin.com/in/ ${slug}`)}`;
+  // Use the full profile URL in quotes so search engines return this exact profile
+  const exactQuery = `"linkedin.com/in/${slug}"`;
+  const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(exactQuery)}`;
   const response = await fetch(searchUrl, {
     headers: {
       'User-Agent': getRandomUserAgent(),
@@ -93,6 +96,7 @@ async function fetchDuckDuckGoSnippet(slug: string): Promise<ExtractedPublicMeta
  * Fetch from DuckDuckGo Lite search
  */
 async function fetchDuckDuckGoLiteSnippet(slug: string): Promise<ExtractedPublicMeta | null> {
+  const exactQuery = `"linkedin.com/in/${slug}"`;
   const searchUrl = `https://lite.duckduckgo.com/lite/`;
   const response = await fetch(searchUrl, {
     method: 'POST',
@@ -100,7 +104,7 @@ async function fetchDuckDuckGoLiteSnippet(slug: string): Promise<ExtractedPublic
       'User-Agent': getRandomUserAgent(),
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: `q=${encodeURIComponent(`site:linkedin.com/in/${slug}`)}`,
+    body: `q=${encodeURIComponent(exactQuery)}`,
     signal: AbortSignal.timeout(3500),
   });
 
@@ -111,9 +115,11 @@ async function fetchDuckDuckGoLiteSnippet(slug: string): Promise<ExtractedPublic
 
 /**
  * Fetch from Bing search snippet
+ * Validates that the returned result URL contains the exact slug.
  */
 async function fetchBingSnippet(slug: string): Promise<ExtractedPublicMeta | null> {
-  const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(`site:linkedin.com/in/${slug}`)}&setlang=en`;
+  const exactQuery = `"linkedin.com/in/${slug}"`;
+  const searchUrl = `https://www.bing.com/search?q=${encodeURIComponent(exactQuery)}&setlang=en`;
   const response = await fetch(searchUrl, {
     headers: {
       'User-Agent': getRandomUserAgent(),
@@ -125,15 +131,18 @@ async function fetchBingSnippet(slug: string): Promise<ExtractedPublicMeta | nul
   if (!response.ok) return null;
   const html = await response.text();
 
-  // Search for result link and title in Bing HTML
-  const titleMatch = html.match(/<h2[^>]*><a[^>]*href="[^"]*linkedin\.com\/in\/[^"]*"[^>]*>([^<]+)<\/a><\/h2>/i)
-    || html.match(/<h2><a[^>]*>([^<]+)<\/a><\/h2>/i);
-  
-  const snippetMatch = html.match(/<p class="b_lineclamp[^>]*>([^<]+)<\/p>/i)
-    || html.match(/<div class="b_caption"[^>]*><p>([^<]+)<\/p>/i);
+  // Strictly validate that result URL contains the exact slug
+  const cleanSlug = slug.toLowerCase();
+  const titleWithUrlRegex = /<h2[^>]*><a[^>]*href="([^"]*linkedin\.com\/in\/([^"/?#]+))[^>]*>([^<]+)<\/a><\/h2>/gi;
+  let match: RegExpExecArray | null;
 
-  if (titleMatch?.[1]) {
-    return parseLinkedInTitle(titleMatch[1], snippetMatch?.[1]);
+  while ((match = titleWithUrlRegex.exec(html)) !== null) {
+    const foundSlug = match[2].toLowerCase().replace(/\/+$/, '');
+    if (foundSlug === cleanSlug) {
+      const snippetMatch = html.match(/<p class="b_lineclamp[^>]*>([^<]+)<\/p>/i)
+        || html.match(/<div class="b_caption"[^>]*><p>([^<]+)<\/p><\/div>/i);
+      return parseLinkedInTitle(match[3], snippetMatch?.[1]);
+    }
   }
 
   return null;
@@ -175,33 +184,56 @@ async function fetchDirectLinkedInMeta(url: string): Promise<ExtractedPublicMeta
 }
 
 /**
- * Parse search result HTML (e.g. DDG) for LinkedIn snippets
+ * Parse search result HTML (e.g. DDG) for LinkedIn snippets.
+ * CRITICAL: Only accepts results whose href exactly matches the requested slug.
+ * This prevents false positives when multiple people share the same name.
  */
 function parseSearchResultHtml(html: string, slug: string): ExtractedPublicMeta | null {
-  // Look for target link matching slug
-  const cleanSlug = slug.toLowerCase();
-  const linkRegex = /<a[^>]*class="(?:result__url|result-link|result__snippet)"[^>]*href="[^"]*linkedin\.com\/in\/([^"/?#]+)"[^>]*>/gi;
-  
-  let match: RegExpExecArray | null;
-  while ((match = linkRegex.exec(html)) !== null) {
-    if (match[1].toLowerCase() === cleanSlug) {
-      const titleMatch = html.match(/<a class="result__a"[^>]*>([^<]+)<\/a>/i);
-      const snippetMatch = html.match(/<a class="result__snippet"[^>]*>([^<]+)<\/a>/i);
-      if (titleMatch?.[1]) {
-        return parseLinkedInTitle(titleMatch[1], snippetMatch?.[1]);
+  const cleanSlug = slug.toLowerCase().replace(/\/+$/, '');
+
+  // Strategy 1: Chunk HTML by opening <div and match slug + title within each chunk.
+  // We split on <div to avoid the 's' (dotAll) regex flag which requires ES2018+.
+  const divChunks = html.split('<div');
+  for (const chunk of divChunks) {
+    // Only process chunks that look like result blocks
+    if (!chunk.includes('result')) continue;
+
+    const linkInChunk = chunk.match(/href="[^"]*linkedin\.com\/in\/([^"/?#]+)/i);
+    if (!linkInChunk) continue;
+
+    const foundSlug = linkInChunk[1].toLowerCase().replace(/\/+$/, '');
+    if (foundSlug !== cleanSlug) continue;
+
+    // This chunk is for our exact slug — extract the title text
+    const titleMatch = chunk.match(/<a[^>]*class="[^"]*result__a[^"]*"[^>]*>([^<]+)<\/a>/i)
+      || chunk.match(/<a[^>]*>([^<]+)<\/a>/i);
+    const snippetMatch = chunk.match(/<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([^<]+)<\/a>/i)
+      || chunk.match(/<span[^>]*class="[^"]*snippet[^"]*"[^>]*>([^<]+)<\/span>/i);
+
+    if (titleMatch?.[1]) {
+      const parsed = parseLinkedInTitle(titleMatch[1].trim(), snippetMatch?.[1]?.trim());
+      if (parsed.fullName && !isNonPersonTitle(parsed.fullName)) {
+        return parsed;
       }
     }
   }
 
-  // Fallback: search for first result title containing LinkedIn pattern
-  const titles = html.match(/<a class="result__a"[^>]*>([^<]+)<\/a>/gi) || [];
-  for (const t of titles) {
-    const text = t.replace(/<[^>]+>/g, '').trim();
-    if (text.toLowerCase().includes('linkedin') || text.includes(' - ') || text.includes(' | ')) {
-      return parseLinkedInTitle(text);
+  // Strategy 2: Flat anchor scan — only accept anchors whose href matches the exact slug
+  const anchors = [...html.matchAll(/<a[^>]*href="([^"]*linkedin\.com\/in\/([^"/?#]+))[^"]*"[^>]*>([^<]+)<\/a>/gi)];
+  for (const anchor of anchors) {
+    const foundSlug = anchor[2].toLowerCase().replace(/\/+$/, '');
+    if (foundSlug !== cleanSlug) continue;
+
+    const titleText = anchor[3].trim();
+    if (!titleText || isNonPersonTitle(titleText)) continue;
+
+    const parsed = parseLinkedInTitle(titleText);
+    if (parsed.fullName && !isNonPersonTitle(parsed.fullName)) {
+      return parsed;
     }
   }
 
+  // NO generic fallback — returning wrong company is worse than returning null
   return null;
 }
 

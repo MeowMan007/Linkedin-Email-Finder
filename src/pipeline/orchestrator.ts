@@ -199,3 +199,139 @@ export async function runEnrichmentPipeline(
 
   return { result: enrichmentResult };
 }
+
+/**
+ * Run enrichment directly using person name and company / domain (Zero LinkedIn scraping required)
+ */
+export async function runDirectEnrichmentPipeline(
+  input: {
+    firstName?: string;
+    lastName?: string;
+    fullName?: string;
+    companyName?: string;
+    companyDomain?: string;
+    linkedinUrl?: string;
+  },
+  options: {
+    requestId?: string;
+    userId?: string | null;
+  } = {}
+): Promise<OrchestratorResult> {
+  const { requestId, userId } = options;
+
+  let fullName = (input.fullName ?? '').trim();
+  let firstName = (input.firstName ?? '').trim();
+  let lastName = (input.lastName ?? '').trim();
+
+  if (!fullName && (firstName || lastName)) {
+    fullName = `${firstName} ${lastName}`.trim();
+  } else if (fullName && (!firstName || !lastName)) {
+    const parts = fullName.split(' ');
+    firstName = parts[0] ?? '';
+    lastName = parts.slice(1).join(' ');
+  }
+
+  if (!fullName && !firstName) {
+    return {
+      result: null,
+      error: 'Please provide a person\'s name (first and last name).',
+      httpStatus: 400,
+    };
+  }
+
+  const companyName = (input.companyName ?? '').trim();
+  let domain = (input.companyDomain ?? '').trim();
+
+  if (!companyName && !domain) {
+    return {
+      result: null,
+      error: 'Please provide a company name or official website domain.',
+      httpStatus: 400,
+    };
+  }
+
+  const allSources: string[] = ['Direct Input'];
+  const allWarnings: string[] = [];
+
+  // Resolve company domain if not directly provided
+  if (!domain && companyName) {
+    const { resolveCompanyDomain } = await import('@/lib/domainResolver');
+    const resolved = await resolveCompanyDomain(companyName, undefined, requestId);
+    if (!resolved || !resolved.domain) {
+      return {
+        result: null,
+        error: `Could not resolve official domain for company "${companyName}". Please provide their domain (e.g. acme.com).`,
+        httpStatus: 422,
+      };
+    }
+    domain = resolved.domain;
+    allSources.push(resolved.source === 'curated_directory' ? 'Curated Enterprise Directory' : 'Autonomous Domain Resolver');
+  }
+
+  const cleanDomain = domain.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+
+  const profile = {
+    linkedinUrl: input.linkedinUrl ?? `https://www.linkedin.com/in/${firstName.toLowerCase()}-${lastName.toLowerCase()}/`,
+    linkedinSlug: `${firstName.toLowerCase()}-${lastName.toLowerCase()}`,
+    fullName,
+    firstName,
+    lastName,
+    currentCompany: companyName || cleanDomain,
+    jobTitle: 'Professional',
+  };
+
+  const company = {
+    name: companyName || cleanDomain,
+    domain: cleanDomain,
+    website: `https://${cleanDomain}`,
+    confidence: 0.95,
+  };
+
+  // Discover email & candidate permutations
+  const discoveryResult = await discoverEmail(profile, company, requestId);
+  if (discoveryResult.warnings.length) allWarnings.push(...discoveryResult.warnings);
+  if (discoveryResult.tried.length) {
+    for (const provider of discoveryResult.tried) {
+      if (!allSources.includes(provider)) allSources.push(provider);
+    }
+  }
+
+  let emailResult = discoveryResult.email;
+
+  // Compute confidence
+  const confidence = calculateConfidence({
+    identityMatched: !!profile.fullName,
+    currentCompanyMatched: !!company.name,
+    domainMatched: !!company.domain,
+    emailFromProvider: !!emailResult,
+    emailVerified: emailResult?.status === 'verified' || emailResult?.status === 'probable',
+  });
+
+  const enrichmentResult: EnrichmentResult = {
+    person: {
+      name: profile.fullName,
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      title: profile.jobTitle,
+      company: company.name,
+      linkedinUrl: profile.linkedinUrl,
+    },
+    company,
+    email: emailResult,
+    confidence,
+    sources: allSources,
+    warnings: allWarnings.length > 0 ? allWarnings : undefined,
+    timestamp: new Date().toISOString(),
+  };
+
+  // Save to DB (non-blocking)
+  const urlHash = hashLinkedInUrl(profile.linkedinUrl);
+  saveSearchRecord({
+    linkedinUrl: profile.linkedinUrl,
+    linkedinUrlHash: urlHash,
+    result: enrichmentResult,
+    userId,
+  }).catch(() => {});
+
+  return { result: enrichmentResult };
+}

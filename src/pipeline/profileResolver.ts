@@ -12,12 +12,12 @@ import { HunterProfileProvider } from '@/providers/hunter';
 import { InHouseProfileProvider } from '@/providers/inhouse';
 import { logger } from '@/lib/logger';
 
-// Register profile providers in priority order
+// Register profile providers in priority order — InHouse first!
 const profileEngine = new ProfileWaterfallEngine([
-  ProspeoProfileProvider, // Top priority: native LinkedIn profile + email API
-  ApolloProfileProvider,  // Second priority: Apollo people/match API
-  HunterProfileProvider,  // Third priority
-  InHouseProfileProvider, // Self-contained fallback parsing
+  InHouseProfileProvider, // Self-contained open search, OpenGraph & slug parsing
+  ProspeoProfileProvider, // Prospeo API if key present
+  ApolloProfileProvider,  // Apollo API if key present
+  HunterProfileProvider,  // Hunter API if key present
 ]);
 
 export interface ProfileResolverResult {

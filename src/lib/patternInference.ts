@@ -9,6 +9,7 @@ import { logger } from './logger';
 export interface InferredPattern {
   pattern: string;
   candidateEmail: string;
+  label: string;
   weight: number;
 }
 
@@ -17,10 +18,12 @@ export interface InferredPattern {
  * Uses weighted scoring based on industry standard pattern prevalence:
  *   1. firstname.lastname@domain.com (45% of enterprise)
  *   2. firstname@domain.com (25% of startups/SMBs)
- *   3. firstinitiallastname@domain.com (15% of corporate)
+ *   3. flastname@domain.com (15% of corporate)
  *   4. firstnamelastname@domain.com (8%)
- *   5. lastname@domain.com (4%)
+ *   5. f.lastname@domain.com (5%)
  *   6. firstname_lastname@domain.com (3%)
+ *   7. firstname.l@domain.com (2%)
+ *   8. lastname@domain.com (2%)
  */
 export function inferCandidateEmails(
   firstName: string,
@@ -34,16 +37,21 @@ export function inferCandidateEmails(
     'firstname': 25,
     'flastname': 15,
     'firstnamelastname': 8,
-    'lastname': 4,
+    'f.lastname': 5,
     'firstname_lastname': 3,
+    'firstname.l': 2,
     'firstnamel': 2,
-    'f.lastname': 2,
-    'fl': 1,
+    'lastname': 2,
+    'lastname.firstname': 1,
+    'f_lastname': 1,
+    'lastnamef': 1,
+    'f': 1,
   };
 
   return patterns.map((p) => ({
     pattern: p.pattern,
     candidateEmail: p.email,
+    label: p.label,
     weight: patternWeights[p.pattern] ?? 1,
   })).sort((a, b) => b.weight - a.weight);
 }

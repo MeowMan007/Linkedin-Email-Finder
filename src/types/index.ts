@@ -47,8 +47,24 @@ export interface CompanyInfo {
 }
 
 // ----------------------------
-// Email Verification Details
-// ----------------------------
+export interface MailServerDetails {
+  primaryMx: string | null;
+  allMx?: Array<{ host: string; priority: number }>;
+  providerName?: string;
+  isCatchAll?: boolean;
+  smtpStatusCode?: number | null;
+  smtpBanner?: string | null;
+}
+
+export interface CandidatePermutation {
+  email: string;
+  pattern: string;
+  label: string;
+  confidence: number;
+  status: EmailStatus;
+  tested?: boolean;
+  smtpStatusCode?: number | null;
+}
 
 export interface EmailVerificationDetails {
   syntaxValid: boolean;
@@ -59,6 +75,7 @@ export interface EmailVerificationDetails {
   roleBased?: boolean;
   catchAll?: boolean;
   providerVerified?: boolean;
+  mailServer?: MailServerDetails;
 }
 
 // ----------------------------
@@ -72,6 +89,7 @@ export interface EmailResult {
   provider?: string;
   pattern?: string;
   verification?: EmailVerificationDetails;
+  candidates?: CandidatePermutation[];
 }
 
 // ----------------------------
@@ -187,7 +205,12 @@ export interface ProfileEnrichmentProvider {
 // ----------------------------
 
 export interface EnrichApiRequest {
-  linkedinUrl: string;
+  linkedinUrl?: string;
+  firstName?: string;
+  lastName?: string;
+  fullName?: string;
+  companyName?: string;
+  companyDomain?: string;
 }
 
 export interface EnrichApiResponse {

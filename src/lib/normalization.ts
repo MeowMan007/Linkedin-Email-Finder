@@ -62,29 +62,49 @@ export function extractRootDomain(url: string): string {
 
 /**
  * Generate possible email patterns from a name and domain.
- * Returns them in order from most common to least common.
+ * Returns them in order of standard enterprise and startup prevalence.
  */
 export function generateEmailPatterns(
   firstName: string,
   lastName: string,
   domain: string
-): Array<{ email: string; pattern: string }> {
-  const f = firstName.toLowerCase().replace(/[^a-z]/g, '');
-  const l = lastName.toLowerCase().replace(/[^a-z]/g, '');
+): Array<{ email: string; pattern: string; label: string }> {
+  const cleanDomain = normalizeDomain(domain);
+  if (!cleanDomain) return [];
+
+  const f = (firstName ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const l = (lastName ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
   const fi = f[0] ?? '';
   const li = l[0] ?? '';
 
-  if (!f || !l || !domain) return [];
+  if (!f && !l) return [];
+
+  // Single name scenario
+  if (f && !l) {
+    return [
+      { email: `${f}@${cleanDomain}`, pattern: 'firstname', label: '{first}@{domain}' },
+      { email: `${fi}@${cleanDomain}`, pattern: 'f', label: '{f}@{domain}' },
+    ];
+  }
+
+  if (!f && l) {
+    return [
+      { email: `${l}@${cleanDomain}`, pattern: 'lastname', label: '{last}@{domain}' },
+    ];
+  }
 
   return [
-    { email: `${f}.${l}@${domain}`, pattern: 'firstname.lastname' },
-    { email: `${f}@${domain}`, pattern: 'firstname' },
-    { email: `${fi}${l}@${domain}`, pattern: 'flastname' },
-    { email: `${f}${li}@${domain}`, pattern: 'firstnamel' },
-    { email: `${l}@${domain}`, pattern: 'lastname' },
-    { email: `${fi}.${l}@${domain}`, pattern: 'f.lastname' },
-    { email: `${f}${l}@${domain}`, pattern: 'firstnamelastname' },
-    { email: `${f}_${l}@${domain}`, pattern: 'firstname_lastname' },
-    { email: `${fi}${li}@${domain}`, pattern: 'fl' },
+    { email: `${f}.${l}@${cleanDomain}`, pattern: 'firstname.lastname', label: '{first}.{last}@{domain}' },
+    { email: `${f}@${cleanDomain}`, pattern: 'firstname', label: '{first}@{domain}' },
+    { email: `${fi}${l}@${cleanDomain}`, pattern: 'flastname', label: '{f}{last}@{domain}' },
+    { email: `${f}${l}@${cleanDomain}`, pattern: 'firstnamelastname', label: '{first}{last}@{domain}' },
+    { email: `${fi}.${l}@${cleanDomain}`, pattern: 'f.lastname', label: '{f}.{last}@{domain}' },
+    { email: `${f}_${l}@${cleanDomain}`, pattern: 'firstname_lastname', label: '{first}_{last}@{domain}' },
+    { email: `${f}.${li}@${cleanDomain}`, pattern: 'firstname.l', label: '{first}.{l}@{domain}' },
+    { email: `${f}${li}@${cleanDomain}`, pattern: 'firstnamel', label: '{first}{l}@{domain}' },
+    { email: `${l}.${f}@${cleanDomain}`, pattern: 'lastname.firstname', label: '{last}.{first}@{domain}' },
+    { email: `${l}@${cleanDomain}`, pattern: 'lastname', label: '{last}@{domain}' },
+    { email: `${fi}_${l}@${cleanDomain}`, pattern: 'f_lastname', label: '{f}_{last}@{domain}' },
+    { email: `${l}${fi}@${cleanDomain}`, pattern: 'lastnamef', label: '{last}{f}@{domain}' },
   ];
 }

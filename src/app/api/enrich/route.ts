@@ -59,15 +59,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { linkedinUrl } = body ?? {};
+  const { linkedinUrl, firstName, lastName, fullName, companyName, companyDomain } = body ?? {};
 
-  if (!linkedinUrl || typeof linkedinUrl !== 'string') {
+  const isDirect = (firstName || fullName) && (companyName || companyDomain);
+  const isUrl = linkedinUrl && typeof linkedinUrl === 'string' && linkedinUrl.trim().length > 0;
+
+  if (!isUrl && !isDirect) {
     return NextResponse.json(
       {
         success: false,
         error: {
-          code: 'MISSING_URL',
-          message: 'Please provide a LinkedIn profile URL.',
+          code: 'MISSING_INPUT',
+          message: 'Please provide either a LinkedIn profile URL or a Person Name and Company Name.',
         },
       },
       { status: 400 }
@@ -77,13 +80,16 @@ export async function POST(request: NextRequest) {
   logger.info('enrich_request', {
     operation: 'api_enrich',
     request_id: requestId,
+    mode: isDirect ? 'direct' : 'linkedin_url',
   });
 
   // Run pipeline
-  const { result, error, httpStatus } = await runEnrichmentPipeline(
-    linkedinUrl,
-    { requestId, userId }
-  );
+  const { result, error, httpStatus } = isDirect
+    ? await (await import('@/pipeline/orchestrator')).runDirectEnrichmentPipeline(
+        { firstName, lastName, fullName, companyName, companyDomain, linkedinUrl },
+        { requestId, userId }
+      )
+    : await runEnrichmentPipeline(linkedinUrl!, { requestId, userId });
 
   if (!result || error) {
     return NextResponse.json(

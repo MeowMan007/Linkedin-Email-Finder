@@ -28,6 +28,34 @@ export async function enrichProfile(linkedinUrl: string): Promise<EnrichmentResu
 }
 
 /**
+ * Submit direct name and company details for enrichment without LinkedIn scraping.
+ */
+export async function enrichDirect(params: {
+  firstName?: string;
+  lastName?: string;
+  fullName?: string;
+  companyName?: string;
+  companyDomain?: string;
+}): Promise<EnrichmentResult> {
+  const response = await fetch('/api/enrich', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.success) {
+    const msg =
+      data?.error?.message ??
+      getDefaultErrorMessage(response.status);
+    throw new ApiError(msg, response.status, data?.error?.code);
+  }
+
+  return data.data as EnrichmentResult;
+}
+
+/**
  * Get paginated search history.
  */
 export async function getHistory(page: number = 1): Promise<{

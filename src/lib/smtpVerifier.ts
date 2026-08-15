@@ -1,6 +1,7 @@
 // ============================================================
 // In-House Direct SMTP Mailbox & Catch-All Verifier Module
 // Communicates directly with target domain MX server over TCP Socket
+// Zero paid API dependencies!
 // ============================================================
 
 import { Socket } from 'node:net';
@@ -14,12 +15,66 @@ export interface SmtpVerificationResult {
   statusCode: number | null;
   responseMessage: string | null;
   mxServer: string | null;
+  mailProvider: string;
   reason?: string;
 }
 
-const DEFAULT_TIMEOUT = 1500; // 1.5 seconds max per socket command (Vercel-safe)
+const DEFAULT_TIMEOUT = 2000; // 2 seconds max per socket command
 const SENDER_EMAIL = 'verify@leadresolve.com';
 const SENDER_DOMAIN = 'leadresolve.com';
+
+/**
+ * Identify mail server provider name from MX hostname
+ */
+export function detectMailProvider(mxHost: string | null): string {
+  if (!mxHost) return 'Unknown Provider';
+  const h = mxHost.toLowerCase();
+
+  if (h.includes('google') || h.includes('googlemail') || h.includes('aspmx')) {
+    return 'Google Workspace / Gmail';
+  }
+  if (h.includes('outlook') || h.includes('protection.outlook') || h.includes('office365') || h.includes('lync')) {
+    return 'Microsoft 365 / Outlook';
+  }
+  if (h.includes('pphosted') || h.includes('proofpoint')) {
+    return 'Proofpoint Protection';
+  }
+  if (h.includes('mimecast')) {
+    return 'Mimecast Secure Mail';
+  }
+  if (h.includes('zoho')) {
+    return 'Zoho Mail';
+  }
+  if (h.includes('protonmail') || h.includes('proton')) {
+    return 'ProtonMail';
+  }
+  if (h.includes('fastmail') || h.includes('messagingengine')) {
+    return 'Fastmail';
+  }
+  if (h.includes('barracuda')) {
+    return 'Barracuda Spam Firewall';
+  }
+  if (h.includes('cloudflare')) {
+    return 'Cloudflare Email Routing';
+  }
+  if (h.includes('amazonses') || h.includes('aws')) {
+    return 'Amazon SES';
+  }
+  if (h.includes('sendgrid')) {
+    return 'SendGrid';
+  }
+  if (h.includes('mailgun')) {
+    return 'Mailgun';
+  }
+  if (h.includes('icloud') || h.includes('apple')) {
+    return 'Apple iCloud Mail';
+  }
+  if (h.includes('yahoodns') || h.includes('yahoo')) {
+    return 'Yahoo Mail';
+  }
+
+  return 'Custom Enterprise Mail Server';
+}
 
 /**
  * Verify an email address directly against the domain's MX server via SMTP RCPT TO protocol.
@@ -38,6 +93,7 @@ export async function verifyEmailViaSmtp(
       statusCode: null,
       responseMessage: null,
       mxServer: null,
+      mailProvider: 'Unknown',
       reason: 'Invalid email syntax',
     };
   }
@@ -54,11 +110,13 @@ export async function verifyEmailViaSmtp(
       statusCode: null,
       responseMessage: null,
       mxServer: null,
+      mailProvider: 'No MX Records',
       reason: 'Domain has no active MX records',
     };
   }
 
   const mxHost = mxRes.primaryMx;
+  const mailProvider = detectMailProvider(mxHost);
 
   // 2. Perform direct SMTP check
   try {
@@ -67,9 +125,9 @@ export async function verifyEmailViaSmtp(
     // If mailbox exists (250 OK), check if domain is catch-all by testing a random address
     let isCatchAll = false;
     if (rcptResult.success) {
-      const randomLocal = `chk_${Math.random().toString(36).substring(2, 10)}`;
+      const randomLocal = `chk_random_${Math.random().toString(36).substring(2, 10)}`;
       const randomEmail = `${randomLocal}@${domain}`;
-      const catchAllCheck = await checkSmtpMailbox(mxHost, randomEmail, Math.min(timeoutMs, 3000));
+      const catchAllCheck = await checkSmtpMailbox(mxHost, randomEmail, Math.min(timeoutMs, 2500));
       if (catchAllCheck.success) {
         isCatchAll = true;
       }
@@ -82,6 +140,7 @@ export async function verifyEmailViaSmtp(
       statusCode: rcptResult.code,
       responseMessage: rcptResult.message,
       mxServer: mxHost,
+      mailProvider,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'SMTP Connection error';
@@ -92,6 +151,7 @@ export async function verifyEmailViaSmtp(
       statusCode: null,
       responseMessage: null,
       mxServer: mxHost,
+      mailProvider,
       reason: msg,
     };
   }
@@ -106,10 +166,10 @@ interface SocketResponse {
 /**
  * Execute low-level TCP Socket SMTP handshake sequence to check RCPT TO
  */
-function checkSmtpMailbox(
+export function checkSmtpMailbox(
   host: string,
   recipientEmail: string,
-  timeout: number
+  timeout: number = DEFAULT_TIMEOUT
 ): Promise<SocketResponse> {
   return new Promise((resolve) => {
     const socket = new Socket();
@@ -144,12 +204,12 @@ function checkSmtpMailbox(
 
     socket.on('data', (data) => {
       const responseStr = data.toString('utf8');
-      const match = responseStr.match(/^(\d{3})\s*(.*)/);
+      const match = responseStr.match(/^(\d{3})([\s\-].*)/m);
       
       if (!match) return;
 
       const code = parseInt(match[1], 10);
-      const msg = match[2] ?? responseStr;
+      const msg = match[2]?.trim() ?? responseStr.trim();
       responseCode = code;
       responseMsg = msg;
 
@@ -185,7 +245,7 @@ function checkSmtpMailbox(
           if (code === 250) {
             finish(true, code, msg);
           } else {
-            // 550, 551, 552, 553, 554 mean address invalid / rejected
+            // 550, 551, 552, 553, 554 mean mailbox rejected / unavailable
             finish(false, code, msg);
           }
           break;

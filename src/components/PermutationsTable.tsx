@@ -1,9 +1,10 @@
 'use client';
 
-import React from 'react';
-import { CandidatePermutation } from '@/types';
+import React, { useState } from 'react';
+import { CandidatePermutation, SmtpPingResult } from '@/types';
 import { CopyButton } from './CopyButton';
 import { VerificationStatus } from './VerificationStatus';
+import { pingEmailSmtp } from '@/lib/api';
 
 interface PermutationsTableProps {
   candidates: CandidatePermutation[];
@@ -11,7 +12,22 @@ interface PermutationsTableProps {
 }
 
 export function PermutationsTable({ candidates, primaryEmail }: PermutationsTableProps) {
+  const [pingingMap, setPingingMap] = useState<Record<string, boolean>>({});
+  const [pingResults, setPingResults] = useState<Record<string, SmtpPingResult>>({});
+
   if (!candidates || candidates.length === 0) return null;
+
+  const handlePing = async (email: string) => {
+    setPingingMap((prev) => ({ ...prev, [email]: true }));
+    try {
+      const res = await pingEmailSmtp(email);
+      setPingResults((prev) => ({ ...prev, [email]: res }));
+    } catch {
+      // ignore individual failures
+    } finally {
+      setPingingMap((prev) => ({ ...prev, [email]: false }));
+    }
+  };
 
   return (
     <div style={{ marginTop: '16px' }}>
@@ -27,7 +43,7 @@ export function PermutationsTable({ candidates, primaryEmail }: PermutationsTabl
           Email Permutations ({candidates.length})
         </p>
         <span style={{ fontSize: '12px', color: 'var(--text-tertiary)' }}>
-          Ranked by likelihood
+          Ranked by likelihood · Live SMTP Verification Available
         </span>
       </div>
 
@@ -39,6 +55,9 @@ export function PermutationsTable({ candidates, primaryEmail }: PermutationsTabl
       }}>
         {candidates.map((cand, idx) => {
           const isPrimary = cand.email === primaryEmail;
+          const pingResult = pingResults[cand.email];
+          const isPinging = pingingMap[cand.email];
+
           return (
             <div
               key={cand.email}
@@ -78,13 +97,64 @@ export function PermutationsTable({ candidates, primaryEmail }: PermutationsTabl
                       Primary Match
                     </span>
                   )}
+                  {pingResult && (
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      padding: '1px 6px',
+                      borderRadius: '4px',
+                      background: pingResult.verdict === 'genuine' ? 'rgba(16, 185, 129, 0.15)' : pingResult.verdict === 'catch_all' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                      color: pingResult.verdict === 'genuine' ? '#10b981' : pingResult.verdict === 'catch_all' ? '#f59e0b' : '#ef4444',
+                    }}>
+                      {pingResult.verdict === 'genuine' ? '✓ SMTP 250 OK (Genuine)' : pingResult.verdict === 'catch_all' ? '⚡ Catch-All' : `✕ Rejected (${pingResult.smtpStatusCode || '550'})`}
+                    </span>
+                  )}
                 </div>
                 <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
                   {cand.label} · {cand.confidence}% pattern weight
                 </span>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                {!pingResult && (
+                  <button
+                    type="button"
+                    onClick={() => handlePing(cand.email)}
+                    disabled={isPinging}
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      padding: '4px 8px',
+                      borderRadius: '4px',
+                      border: '1px solid var(--border)',
+                      background: 'var(--bg-subtle)',
+                      color: 'var(--text-secondary)',
+                      cursor: isPinging ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    {isPinging ? (
+                      <>
+                        <span
+                          style={{
+                            width: '10px',
+                            height: '10px',
+                            border: '1.5px solid var(--color-400)',
+                            borderTopColor: 'transparent',
+                            borderRadius: '50%',
+                            display: 'inline-block',
+                          }}
+                          className="animate-spin"
+                        />
+                        Pinging...
+                      </>
+                    ) : (
+                      '⚡ Ping SMTP'
+                    )}
+                  </button>
+                )}
                 <VerificationStatus status={cand.status} />
                 <CopyButton text={cand.email} label="Copy email" />
               </div>

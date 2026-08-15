@@ -7,6 +7,8 @@
 import { Socket } from 'node:net';
 import { logger } from '@/lib/logger';
 import { resolveDomainMx } from './dnsResolver';
+import { SmtpPingResult, SmtpAuditStep } from '@/types';
+import { validateEmailSyntax } from './validation';
 
 export interface SmtpVerificationResult {
   email: string;
@@ -248,8 +250,6 @@ export function checkSmtpMailbox(
             // 550, 551, 552, 553, 554 mean mailbox rejected / unavailable
             finish(false, code, msg);
           }
-          break;
-
         default:
           finish(false, code, msg);
       }
@@ -258,4 +258,265 @@ export function checkSmtpMailbox(
     // Connect to port 25 (Standard SMTP)
     socket.connect(25, host);
   });
+}
+
+// ----------------------------
+// Full Diagnostic SMTP Pinger
+// ----------------------------
+
+export async function pingEmailSmtpFull(
+  email: string,
+  timeoutMs: number = 3000
+): Promise<SmtpPingResult> {
+  const start = Date.now();
+  const auditTrail: SmtpAuditStep[] = [];
+
+  const addStep = (
+    step: string,
+    status: 'pass' | 'fail' | 'warn' | 'info',
+    message: string,
+    code?: number | null
+  ) => {
+    auditTrail.push({
+      step,
+      status,
+      code,
+      message,
+      timestamp: Date.now() - start,
+    });
+  };
+
+  const normalized = email.trim().toLowerCase();
+
+  // 1. Syntax Check
+  const syntaxValid = validateEmailSyntax(normalized);
+  if (!syntaxValid) {
+    addStep('Syntax Validation', 'fail', `Invalid email format: "${email}"`);
+    return {
+      email: normalized,
+      domain: normalized.split('@')[1] || '',
+      syntaxValid: false,
+      mxFound: false,
+      primaryMx: null,
+      allMx: [],
+      mailProvider: 'Invalid',
+      connected: false,
+      smtpStatusCode: null,
+      smtpResponse: null,
+      isCatchAll: false,
+      verdict: 'invalid',
+      verdictLabel: 'Invalid Syntax',
+      verdictDescription: 'The email address format does not conform to RFC 5322 syntax standards.',
+      durationMs: Date.now() - start,
+      auditTrail,
+    };
+  }
+
+  addStep('Syntax Validation', 'pass', 'Email syntax conforms to RFC 5322 specifications');
+
+  const domain = normalized.split('@')[1];
+
+  // 2. DNS MX Records
+  addStep('DNS MX Lookup', 'info', `Querying DNS MX records for domain "${domain}"...`);
+  const mxRes = await resolveDomainMx(domain);
+
+  if (!mxRes.hasMx || !mxRes.primaryMx) {
+    addStep('DNS MX Lookup', 'fail', `No active MX mail exchange records found for "${domain}". Domain cannot receive email.`);
+    return {
+      email: normalized,
+      domain,
+      syntaxValid: true,
+      mxFound: false,
+      primaryMx: null,
+      allMx: [],
+      mailProvider: 'No MX Records',
+      connected: false,
+      smtpStatusCode: null,
+      smtpResponse: null,
+      isCatchAll: false,
+      verdict: 'invalid',
+      verdictLabel: 'Domain Cannot Receive Mail',
+      verdictDescription: `The domain "${domain}" has no configured mail exchange (MX) DNS records.`,
+      durationMs: Date.now() - start,
+      auditTrail,
+    };
+  }
+
+  const primaryMx = mxRes.primaryMx;
+  const allMx = mxRes.records.map((r) => ({ host: r.exchange, priority: r.priority }));
+  const mailProvider = detectMailProvider(primaryMx);
+
+  addStep(
+    'DNS MX Lookup',
+    'pass',
+    `Found ${allMx.length} MX record(s). Primary host: "${primaryMx}" (Priority ${allMx[0]?.priority ?? 10})`
+  );
+  addStep('Provider Identification', 'info', `Identified mail provider: ${mailProvider}`);
+
+  // 3. Socket Handshake & RCPT TO check
+  addStep('SMTP Socket Connect', 'info', `Initiating TCP socket connection to ${primaryMx}:25...`);
+
+  try {
+    const rcptResult = await checkSmtpMailbox(primaryMx, normalized, timeoutMs);
+
+    if (rcptResult.code) {
+      if (rcptResult.code === 220 || rcptResult.code === 250) {
+        addStep('SMTP Handshake', 'pass', `Connected and greeted mail server successfully (Code ${rcptResult.code})`, rcptResult.code);
+      } else if (rcptResult.code === 408) {
+        addStep('SMTP Handshake', 'warn', 'Connection timed out while waiting for server response.', 408);
+      } else {
+        addStep('SMTP Handshake', 'warn', `Server responded with code ${rcptResult.code}: ${rcptResult.message}`, rcptResult.code);
+      }
+    }
+
+    if (rcptResult.success) {
+      addStep(
+        'Mailbox Verification (RCPT TO)',
+        'pass',
+        `Mailbox exists! Server returned 250 OK: "${rcptResult.message}"`,
+        250
+      );
+
+      // 4. Catch-all test
+      addStep('Catch-All Detection', 'info', 'Testing domain for catch-all behavior with randomized mailbox probe...');
+      const randomLocal = `verify_chk_${Math.random().toString(36).substring(2, 10)}`;
+      const randomEmail = `${randomLocal}@${domain}`;
+      const catchAllCheck = await checkSmtpMailbox(primaryMx, randomEmail, Math.min(timeoutMs, 2500));
+
+      let isCatchAll = false;
+      if (catchAllCheck.success) {
+        isCatchAll = true;
+        addStep(
+          'Catch-All Detection',
+          'warn',
+          `Server accepted non-existent address "${randomEmail}" (Code 250). Domain is Catch-All (accepts all addresses).`,
+          250
+        );
+
+        return {
+          email: normalized,
+          domain,
+          syntaxValid: true,
+          mxFound: true,
+          primaryMx,
+          allMx,
+          mailProvider,
+          connected: true,
+          smtpStatusCode: 250,
+          smtpResponse: rcptResult.message,
+          isCatchAll: true,
+          verdict: 'catch_all',
+          verdictLabel: 'Catch-All Domain (Likely Genuine)',
+          verdictDescription: 'The mail server accepted this address, but the domain is configured as catch-all (it accepts all mailbox names). The email address is formatted accurately.',
+          durationMs: Date.now() - start,
+          auditTrail,
+        };
+      } else {
+        addStep(
+          'Catch-All Detection',
+          'pass',
+          `Domain rejected random address probe (Code ${catchAllCheck.code ?? 550}). Domain is NOT catch-all.`,
+          catchAllCheck.code
+        );
+
+        return {
+          email: normalized,
+          domain,
+          syntaxValid: true,
+          mxFound: true,
+          primaryMx,
+          allMx,
+          mailProvider,
+          connected: true,
+          smtpStatusCode: 250,
+          smtpResponse: rcptResult.message,
+          isCatchAll: false,
+          verdict: 'genuine',
+          verdictLabel: '100% Genuine & Live Mailbox',
+          verdictDescription: `Confirmed live mailbox on ${mailProvider}. Server accepted RCPT TO with code 250 and rejected randomized test aliases.`,
+          durationMs: Date.now() - start,
+          auditTrail,
+        };
+      }
+    } else {
+      const code = rcptResult.code;
+      const isRejection = code !== null && (code === 550 || code === 551 || code === 552 || code === 553 || code === 554);
+
+      if (isRejection) {
+        addStep(
+          'Mailbox Verification (RCPT TO)',
+          'fail',
+          `Mailbox does NOT exist. Server rejected recipient with code ${code}: "${rcptResult.message}"`,
+          code
+        );
+
+        return {
+          email: normalized,
+          domain,
+          syntaxValid: true,
+          mxFound: true,
+          primaryMx,
+          allMx,
+          mailProvider,
+          connected: true,
+          smtpStatusCode: code,
+          smtpResponse: rcptResult.message,
+          isCatchAll: false,
+          verdict: 'invalid',
+          verdictLabel: 'Invalid / Mailbox Not Found',
+          verdictDescription: `The recipient mail server explicitly rejected this email address with status code ${code} (${rcptResult.message || 'User unknown'}).`,
+          durationMs: Date.now() - start,
+          auditTrail,
+        };
+      } else {
+        addStep(
+          'Mailbox Verification (RCPT TO)',
+          'warn',
+          `Server unreachable or blocked handshake: "${rcptResult.message || 'Connection timeout'}"`,
+          code
+        );
+
+        return {
+          email: normalized,
+          domain,
+          syntaxValid: true,
+          mxFound: true,
+          primaryMx,
+          allMx,
+          mailProvider,
+          connected: false,
+          smtpStatusCode: code,
+          smtpResponse: rcptResult.message,
+          isCatchAll: false,
+          verdict: 'unverifiable',
+          verdictLabel: 'Server Protected / Unverifiable',
+          verdictDescription: `The target mail server (${mailProvider}) restricted real-time RCPT TO probing or timed out. The domain has active MX servers.`,
+          durationMs: Date.now() - start,
+          auditTrail,
+        };
+      }
+    }
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'Unknown socket error';
+    addStep('SMTP Socket Connect', 'warn', `Socket connection failed: ${errorMsg}`);
+
+    return {
+      email: normalized,
+      domain,
+      syntaxValid: true,
+      mxFound: true,
+      primaryMx,
+      allMx,
+      mailProvider,
+      connected: false,
+      smtpStatusCode: null,
+      smtpResponse: null,
+      isCatchAll: false,
+      verdict: 'unverifiable',
+      verdictLabel: 'Connection Blocked / Unverifiable',
+      verdictDescription: `Could not complete TCP connection to ${primaryMx}:25. Mail server may be blocking external socket probes.`,
+      durationMs: Date.now() - start,
+      auditTrail,
+    };
+  }
 }

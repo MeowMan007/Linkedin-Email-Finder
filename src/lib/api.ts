@@ -1,8 +1,24 @@
-// ============================================================
-// Client-side API Helpers
-// ============================================================
+import { EnrichmentResult, SearchRecord, StatsResponse, SmtpPingResult } from '@/types';
 
-import { EnrichmentResult, SearchRecord, StatsResponse } from '@/types';
+/**
+ * Perform live direct SMTP mailbox verification and pinging for any email address.
+ */
+export async function pingEmailSmtp(email: string): Promise<SmtpPingResult> {
+  const response = await fetch('/api/verify-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.success) {
+    const msg = data?.error?.message ?? 'SMTP ping verification failed.';
+    throw new ApiError(msg, response.status, data?.error?.code);
+  }
+
+  return data.data as SmtpPingResult;
+}
 
 /**
  * Submit a LinkedIn URL for enrichment.

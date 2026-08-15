@@ -11,20 +11,20 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Resolve — Professional Email Enrichment',
+    default: 'Resolve — Work Email Finder & Live SMTP Mailbox Verifier',
     template: '%s · Resolve',
   },
   description:
-    'Find verified professional email addresses from LinkedIn profiles. B2B contact enrichment for serious outreach.',
-  keywords: ['email enrichment', 'LinkedIn', 'email finder', 'B2B', 'lead generation'],
+    'Find verified corporate work email addresses and verify live mailbox existence via direct RFC 5321 TCP SMTP socket pinging.',
+  keywords: ['email finder', 'SMTP verification', 'email ping', 'catch-all detector', 'B2B outreach', 'mailbox verifier'],
   robots: {
     index: true,
     follow: true,
   },
   openGraph: {
-    title: 'Resolve — Professional Email Enrichment',
+    title: 'Resolve — Work Email Finder & Live SMTP Mailbox Verifier',
     description:
-      'Find verified professional email addresses from LinkedIn profiles.',
+      'Find verified corporate work emails and verify live mailbox deliverability using direct SMTP socket handshakes.',
     type: 'website',
     siteName: 'Resolve',
   },

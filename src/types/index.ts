@@ -227,6 +227,37 @@ export interface EnrichApiError {
   };
 }
 
+// ----------------------------
+// SMTP Live Ping & Verification Result
+// ----------------------------
+
+export interface SmtpAuditStep {
+  step: string;
+  status: 'pass' | 'fail' | 'warn' | 'info';
+  code?: number | null;
+  message: string;
+  timestamp: number;
+}
+
+export interface SmtpPingResult {
+  email: string;
+  domain: string;
+  syntaxValid: boolean;
+  mxFound: boolean;
+  primaryMx: string | null;
+  allMx: Array<{ host: string; priority: number }>;
+  mailProvider: string;
+  connected: boolean;
+  smtpStatusCode: number | null;
+  smtpResponse: string | null;
+  isCatchAll: boolean;
+  verdict: 'genuine' | 'invalid' | 'catch_all' | 'unverifiable';
+  verdictLabel: string;
+  verdictDescription: string;
+  durationMs: number;
+  auditTrail: SmtpAuditStep[];
+}
+
 export interface StatsResponse {
   total: number;
   verified: number;

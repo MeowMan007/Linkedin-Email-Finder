@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { validateLinkedInUrl } from '@/lib/validation';
+import React, { useState } from 'react';
+import { validateEmailSyntax } from '@/lib/validation';
 
 export interface DirectSearchParams {
   firstName: string;
@@ -11,51 +11,34 @@ export interface DirectSearchParams {
 }
 
 interface SearchInputProps {
-  onSubmitUrl: (url: string) => void;
   onSubmitDirect: (params: DirectSearchParams) => void;
+  onSubmitSmtpPing: (email: string) => void;
   loading?: boolean;
   disabled?: boolean;
 }
 
 export function SearchInput({
-  onSubmitUrl,
   onSubmitDirect,
+  onSubmitSmtpPing,
   loading = false,
   disabled = false,
 }: SearchInputProps) {
-  const [tab, setTab] = useState<'url' | 'direct'>('url');
-  
-  // URL mode state
-  const [urlValue, setUrlValue] = useState('');
-  const [urlError, setUrlError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState<'find' | 'ping'>('find');
 
-  // Direct mode state
+  // Find Person Email state
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [company, setCompany] = useState('');
   const [domain, setDomain] = useState('');
-  const [directError, setDirectError] = useState<string | null>(null);
+  const [findError, setFindError] = useState<string | null>(null);
 
-  const handleUrlSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setUrlError(null);
-
-    const trimmed = urlValue.trim();
-    const validation = validateLinkedInUrl(trimmed);
-
-    if (!validation.valid) {
-      setUrlError(validation.error ?? 'Invalid LinkedIn URL.');
-      inputRef.current?.focus();
-      return;
-    }
-
-    onSubmitUrl(validation.normalizedUrl!);
-  };
+  // Live SMTP Ping state
+  const [pingEmail, setPingEmail] = useState('');
+  const [pingError, setPingError] = useState<string | null>(null);
 
   const handleDirectSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setDirectError(null);
+    setFindError(null);
 
     const f = firstName.trim();
     const l = lastName.trim();
@@ -63,12 +46,12 @@ export function SearchInput({
     const d = domain.trim();
 
     if (!f && !l) {
-      setDirectError('Please enter the person\'s name.');
+      setFindError('Please enter at least a First Name or Last Name.');
       return;
     }
 
     if (!c && !d) {
-      setDirectError('Please enter a company name or company website domain.');
+      setFindError('Please enter a Company Name or website domain (e.g. OpenAI, openai.com).');
       return;
     }
 
@@ -80,29 +63,47 @@ export function SearchInput({
     });
   };
 
-  const applyExample = (exUrl: string) => {
-    setTab('url');
-    setUrlValue(exUrl);
-    setUrlError(null);
+  const handlePingSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPingError(null);
+
+    const trimmed = pingEmail.trim();
+    if (!trimmed) {
+      setPingError('Please enter an email address to ping.');
+      return;
+    }
+
+    if (!validateEmailSyntax(trimmed)) {
+      setPingError('Please enter a valid email address format (e.g. name@company.com).');
+      return;
+    }
+
+    onSubmitSmtpPing(trimmed);
   };
 
-  const applyDirectExample = (f: string, l: string, c: string, d?: string) => {
-    setTab('direct');
+  const applyFindExample = (f: string, l: string, c: string, d?: string) => {
+    setActiveTab('find');
     setFirstName(f);
     setLastName(l);
     setCompany(c);
     setDomain(d ?? '');
-    setDirectError(null);
+    setFindError(null);
+  };
+
+  const applyPingExample = (email: string) => {
+    setActiveTab('ping');
+    setPingEmail(email);
+    setPingError(null);
   };
 
   return (
     <div>
-      {/* Tab Switcher */}
+      {/* Mode Switcher Tabs */}
       <div style={{
         display: 'flex',
-        gap: '4px',
+        gap: '6px',
         background: 'var(--bg-subtle)',
-        padding: '3px',
+        padding: '4px',
         borderRadius: '8px',
         border: '1px solid var(--border)',
         marginBottom: '16px',
@@ -110,210 +111,161 @@ export function SearchInput({
       }}>
         <button
           type="button"
-          onClick={() => setTab('url')}
+          onClick={() => {
+            setActiveTab('find');
+            setFindError(null);
+          }}
           style={{
-            padding: '6px 14px',
+            padding: '7px 16px',
             fontSize: '13px',
-            fontWeight: tab === 'url' ? 600 : 400,
+            fontWeight: activeTab === 'find' ? 600 : 400,
             borderRadius: '6px',
             border: 'none',
-            background: tab === 'url' ? 'var(--surface)' : 'transparent',
-            color: tab === 'url' ? 'var(--text-primary)' : 'var(--text-secondary)',
-            boxShadow: tab === 'url' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+            background: activeTab === 'find' ? 'var(--surface)' : 'transparent',
+            color: activeTab === 'find' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            boxShadow: activeTab === 'find' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
             cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
             transition: 'all 120ms ease',
           }}
         >
-          LinkedIn Profile URL
+          <span>👤</span>
+          <span>Find Person Email</span>
         </button>
+
         <button
           type="button"
-          onClick={() => setTab('direct')}
+          onClick={() => {
+            setActiveTab('ping');
+            setPingError(null);
+          }}
           style={{
-            padding: '6px 14px',
+            padding: '7px 16px',
             fontSize: '13px',
-            fontWeight: tab === 'direct' ? 600 : 400,
+            fontWeight: activeTab === 'ping' ? 600 : 400,
             borderRadius: '6px',
             border: 'none',
-            background: tab === 'direct' ? 'var(--surface)' : 'transparent',
-            color: tab === 'direct' ? 'var(--text-primary)' : 'var(--text-secondary)',
-            boxShadow: tab === 'direct' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+            background: activeTab === 'ping' ? 'var(--surface)' : 'transparent',
+            color: activeTab === 'ping' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            boxShadow: activeTab === 'ping' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
             cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
             transition: 'all 120ms ease',
           }}
         >
-          Name & Company Direct
+          <span>⚡</span>
+          <span>Live SMTP Email Pinger</span>
         </button>
       </div>
 
-      {tab === 'url' ? (
-        <form onSubmit={handleUrlSubmit} noValidate aria-label="LinkedIn URL enrichment form">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'stretch', gap: '8px' }}>
-              <div style={{ flex: 1, position: 'relative' }}>
+      {/* Tab 1: Find Person Email Form */}
+      {activeTab === 'find' ? (
+        <form onSubmit={handleDirectSubmit} noValidate aria-label="Find Person Work Email Form">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                  First Name
+                </label>
                 <input
-                  ref={inputRef}
-                  id="linkedin-url-input"
                   type="text"
-                  value={urlValue}
+                  placeholder="e.g. Satya"
+                  value={firstName}
                   onChange={(e) => {
-                    setUrlValue(e.target.value);
-                    if (urlError) setUrlError(null);
+                    setFirstName(e.target.value);
+                    if (findError) setFindError(null);
                   }}
-                  placeholder="https://www.linkedin.com/in/satyanadella"
                   disabled={loading || disabled}
-                  aria-label="LinkedIn profile URL"
-                  aria-invalid={!!urlError}
                   style={{
-                    padding: '13px 16px',
+                    padding: '12px 14px',
                     fontSize: '14px',
                     borderRadius: '6px',
-                    border: `1px solid ${urlError ? 'var(--color-400)' : 'var(--border-strong)'}`,
+                    border: '1px solid var(--border-strong)',
                     background: 'var(--surface)',
                     color: 'var(--text-primary)',
                     width: '100%',
-                    transition: 'border-color 120ms ease',
-                    opacity: disabled ? 0.6 : 1,
                   }}
                 />
               </div>
-              <button
-                type="submit"
-                disabled={loading || disabled || !urlValue.trim()}
-                id="find-email-button"
-                style={{
-                  padding: '13px 22px',
-                  background: loading || !urlValue.trim() ? 'var(--color-200)' : 'var(--color-900)',
-                  color: loading || !urlValue.trim() ? 'var(--color-400)' : 'var(--color-white)',
-                  border: 'none',
-                  borderRadius: '6px',
-                  fontFamily: 'var(--font-sans)',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  cursor: loading || !urlValue.trim() ? 'not-allowed' : 'pointer',
-                  whiteSpace: 'nowrap',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  flexShrink: 0,
-                }}
-              >
-                {loading ? (
-                  <>
-                    <span
-                      style={{
-                        width: '14px',
-                        height: '14px',
-                        border: '2px solid var(--color-400)',
-                        borderTopColor: 'transparent',
-                        borderRadius: '50%',
-                        display: 'inline-block',
-                      }}
-                      className="animate-spin"
-                    />
-                    Finding & Verifying...
-                  </>
-                ) : (
-                  'Find Work Email'
-                )}
-              </button>
-            </div>
-
-            {urlError && (
-              <p
-                id="url-error"
-                role="alert"
-                style={{
-                  color: 'var(--color-500)',
-                  fontSize: '13px',
-                  margin: 0,
-                  paddingLeft: '2px',
-                }}
-              >
-                {urlError}
-              </p>
-            )}
-          </div>
-        </form>
-      ) : (
-        <form onSubmit={handleDirectSubmit} noValidate aria-label="Direct Name and Company form">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <input
-                type="text"
-                placeholder="First Name (e.g. Satya)"
-                value={firstName}
-                onChange={(e) => {
-                  setFirstName(e.target.value);
-                  if (directError) setDirectError(null);
-                }}
-                disabled={loading || disabled}
-                style={{
-                  padding: '12px 14px',
-                  fontSize: '14px',
-                  borderRadius: '6px',
-                  border: '1px solid var(--border-strong)',
-                  background: 'var(--surface)',
-                  color: 'var(--text-primary)',
-                }}
-              />
-              <input
-                type="text"
-                placeholder="Last Name (e.g. Nadella)"
-                value={lastName}
-                onChange={(e) => {
-                  setLastName(e.target.value);
-                  if (directError) setDirectError(null);
-                }}
-                disabled={loading || disabled}
-                style={{
-                  padding: '12px 14px',
-                  fontSize: '14px',
-                  borderRadius: '6px',
-                  border: '1px solid var(--border-strong)',
-                  background: 'var(--surface)',
-                  color: 'var(--text-primary)',
-                }}
-              />
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                  Last Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Nadella"
+                  value={lastName}
+                  onChange={(e) => {
+                    setLastName(e.target.value);
+                    if (findError) setFindError(null);
+                  }}
+                  disabled={loading || disabled}
+                  style={{
+                    padding: '12px 14px',
+                    fontSize: '14px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-strong)',
+                    background: 'var(--surface)',
+                    color: 'var(--text-primary)',
+                    width: '100%',
+                  }}
+                />
+              </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <input
-                type="text"
-                placeholder="Company Name (e.g. Microsoft)"
-                value={company}
-                onChange={(e) => {
-                  setCompany(e.target.value);
-                  if (directError) setDirectError(null);
-                }}
-                disabled={loading || disabled}
-                style={{
-                  padding: '12px 14px',
-                  fontSize: '14px',
-                  borderRadius: '6px',
-                  border: '1px solid var(--border-strong)',
-                  background: 'var(--surface)',
-                  color: 'var(--text-primary)',
-                }}
-              />
-              <input
-                type="text"
-                placeholder="Website / Domain (optional, e.g. microsoft.com)"
-                value={domain}
-                onChange={(e) => {
-                  setDomain(e.target.value);
-                  if (directError) setDirectError(null);
-                }}
-                disabled={loading || disabled}
-                style={{
-                  padding: '12px 14px',
-                  fontSize: '14px',
-                  borderRadius: '6px',
-                  border: '1px solid var(--border-strong)',
-                  background: 'var(--surface)',
-                  color: 'var(--text-primary)',
-                }}
-              />
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                  Company Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Microsoft"
+                  value={company}
+                  onChange={(e) => {
+                    setCompany(e.target.value);
+                    if (findError) setFindError(null);
+                  }}
+                  disabled={loading || disabled}
+                  style={{
+                    padding: '12px 14px',
+                    fontSize: '14px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-strong)',
+                    background: 'var(--surface)',
+                    color: 'var(--text-primary)',
+                    width: '100%',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                  Company Domain <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. microsoft.com"
+                  value={domain}
+                  onChange={(e) => {
+                    setDomain(e.target.value);
+                    if (findError) setFindError(null);
+                  }}
+                  disabled={loading || disabled}
+                  style={{
+                    padding: '12px 14px',
+                    fontSize: '14px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-strong)',
+                    background: 'var(--surface)',
+                    color: 'var(--text-primary)',
+                    width: '100%',
+                  }}
+                />
+              </div>
             </div>
 
             <button
@@ -333,14 +285,114 @@ export function SearchInput({
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: '8px',
+                marginTop: '4px',
               }}
             >
-              {loading ? 'Discovering Permutations & Probing SMTP...' : 'Find & Verify Work Email'}
+              {loading ? (
+                <>
+                  <span
+                    style={{
+                      width: '14px',
+                      height: '14px',
+                      border: '2px solid var(--color-400)',
+                      borderTopColor: 'transparent',
+                      borderRadius: '50%',
+                      display: 'inline-block',
+                    }}
+                    className="animate-spin"
+                  />
+                  Generating Permutations & Probing SMTP...
+                </>
+              ) : (
+                'Find & Verify Work Email'
+              )}
             </button>
 
-            {directError && (
-              <p style={{ color: 'var(--color-500)', fontSize: '13px', margin: 0 }}>
-                {directError}
+            {findError && (
+              <p style={{ color: 'var(--color-500)', fontSize: '13px', margin: '4px 0 0' }}>
+                {findError}
+              </p>
+            )}
+          </div>
+        </form>
+      ) : (
+        /* Tab 2: Live SMTP Email Pinger Form */
+        <form onSubmit={handlePingSubmit} noValidate aria-label="Direct Live SMTP Email Pinger Form">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>
+                Email Address to Ping & Verify
+              </label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="email"
+                  placeholder="e.g. satya.nadella@microsoft.com or contact@openai.com"
+                  value={pingEmail}
+                  onChange={(e) => {
+                    setPingEmail(e.target.value);
+                    if (pingError) setPingError(null);
+                  }}
+                  disabled={loading || disabled}
+                  style={{
+                    flex: 1,
+                    padding: '13px 16px',
+                    fontSize: '14px',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-strong)',
+                    background: 'var(--surface)',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'var(--font-mono, monospace)',
+                  }}
+                />
+                <button
+                  type="submit"
+                  disabled={loading || disabled || !pingEmail.trim()}
+                  style={{
+                    padding: '13px 22px',
+                    background: loading || !pingEmail.trim() ? 'var(--color-200)' : '#10b981',
+                    color: loading || !pingEmail.trim() ? 'var(--color-400)' : '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontFamily: 'var(--font-sans)',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: loading || !pingEmail.trim() ? 'not-allowed' : 'pointer',
+                    whiteSpace: 'nowrap',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    flexShrink: 0,
+                  }}
+                >
+                  {loading ? (
+                    <>
+                      <span
+                        style={{
+                          width: '14px',
+                          height: '14px',
+                          border: '2px solid rgba(255,255,255,0.4)',
+                          borderTopColor: '#ffffff',
+                          borderRadius: '50%',
+                          display: 'inline-block',
+                        }}
+                        className="animate-spin"
+                      />
+                      Pinging Server...
+                    </>
+                  ) : (
+                    'Ping Live Mailbox ⚡'
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', margin: '0' }}>
+              Connects directly to the domain&apos;s MX server over port 25 with RFC 5321 RCPT TO socket handshake and tests catch-all behavior.
+            </p>
+
+            {pingError && (
+              <p style={{ color: 'var(--color-500)', fontSize: '13px', margin: '4px 0 0' }}>
+                {pingError}
               </p>
             )}
           </div>
@@ -348,11 +400,11 @@ export function SearchInput({
       )}
 
       {/* Quick Example Pills */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '12px' }}>
-        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Try:</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '14px' }}>
+        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>Try examples:</span>
         <button
           type="button"
-          onClick={() => applyExample('https://www.linkedin.com/in/satyanadella/')}
+          onClick={() => applyFindExample('Satya', 'Nadella', 'Microsoft', 'microsoft.com')}
           style={{
             fontSize: '11px',
             background: 'var(--bg-subtle)',
@@ -367,7 +419,7 @@ export function SearchInput({
         </button>
         <button
           type="button"
-          onClick={() => applyDirectExample('Sam', 'Altman', 'OpenAI', 'openai.com')}
+          onClick={() => applyFindExample('Sam', 'Altman', 'OpenAI', 'openai.com')}
           style={{
             fontSize: '11px',
             background: 'var(--bg-subtle)',
@@ -382,7 +434,7 @@ export function SearchInput({
         </button>
         <button
           type="button"
-          onClick={() => applyDirectExample('Sundar', 'Pichai', 'Google', 'google.com')}
+          onClick={() => applyPingExample('satya.nadella@microsoft.com')}
           style={{
             fontSize: '11px',
             background: 'var(--bg-subtle)',
@@ -393,7 +445,7 @@ export function SearchInput({
             cursor: 'pointer',
           }}
         >
-          Sundar Pichai (Google)
+          ⚡ Ping satya.nadella@microsoft.com
         </button>
       </div>
     </div>

@@ -4,47 +4,54 @@ import React, { useState } from 'react';
 import { SearchInput, DirectSearchParams } from '@/components/SearchInput';
 import { LoadingState } from '@/components/LoadingState';
 import { LeadCard } from '@/components/LeadCard';
-import { enrichProfile, enrichDirect, ApiError } from '@/lib/api';
-import { EnrichmentResult } from '@/types';
+import { SmtpPingResultCard } from '@/components/SmtpPingResultCard';
+import { enrichDirect, pingEmailSmtp, ApiError } from '@/lib/api';
+import { EnrichmentResult, SmtpPingResult } from '@/types';
 
 export default function HomePage() {
   const [loading, setLoading] = useState(false);
+  const [loadingMode, setLoadingMode] = useState<'enrich' | 'ping'>('enrich');
   const [reverifying, setReverifying] = useState(false);
-  const [result, setResult] = useState<EnrichmentResult | null>(null);
+  const [enrichResult, setEnrichResult] = useState<EnrichmentResult | null>(null);
+  const [smtpResult, setSmtpResult] = useState<SmtpPingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleUrlSubmit = async (url: string) => {
+  const handleDirectSubmit = async (params: DirectSearchParams) => {
     setLoading(true);
-    setResult(null);
+    setLoadingMode('enrich');
+    setEnrichResult(null);
+    setSmtpResult(null);
     setError(null);
 
     try {
-      const data = await enrichProfile(url);
-      setResult(data);
+      const data = await enrichDirect(params);
+      setEnrichResult(data);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError('An unexpected error occurred. Please try again.');
+        setError('An unexpected error occurred. Please check the inputs and try again.');
       }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDirectSubmit = async (params: DirectSearchParams) => {
+  const handleSmtpPingSubmit = async (email: string) => {
     setLoading(true);
-    setResult(null);
+    setLoadingMode('ping');
+    setEnrichResult(null);
+    setSmtpResult(null);
     setError(null);
 
     try {
-      const data = await enrichDirect(params);
-      setResult(data);
+      const data = await pingEmailSmtp(email);
+      setSmtpResult(data);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError('An unexpected error occurred. Please try again.');
+        setError('SMTP Ping failed. Target mail server may be unreachable or rejecting socket probes.');
       }
     } finally {
       setLoading(false);
@@ -62,7 +69,7 @@ export default function HomePage() {
 
     try {
       const data = await enrichDirect(params);
-      setResult(data);
+      setEnrichResult(data);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -90,14 +97,14 @@ export default function HomePage() {
             background: 'rgba(16, 185, 129, 0.1)',
             border: '1px solid rgba(16, 185, 129, 0.25)',
             borderRadius: '999px',
-            padding: '3px 10px',
+            padding: '4px 12px',
             fontSize: '11px',
             fontWeight: 600,
             color: '#10b981',
-            marginBottom: '12px',
+            marginBottom: '14px',
           }}>
             <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
-            Zero External API Dependencies · Direct DNS & SMTP Engine
+            Zero External API Dependencies · Direct Port 25 SMTP Handshake Engine
           </div>
 
           <h1 style={{
@@ -108,25 +115,25 @@ export default function HomePage() {
             color: 'var(--text-primary)',
             marginBottom: '12px',
           }}>
-            LinkedIn Email Finder &<br />Live SMTP Mailbox Verifier
+            Work Email Finder &<br />Live SMTP Mailbox Verifier
           </h1>
           <p style={{
             fontSize: '15px',
             color: 'var(--text-secondary)',
             lineHeight: 1.6,
-            maxWidth: '540px',
+            maxWidth: '560px',
           }}>
-            Paste any public LinkedIn profile URL or enter a person&apos;s name and company.
-            The system resolves corporate domains, generates all standard email permutations,
-            and validates live mailbox existence using direct TCP SMTP handshakes.
+            Find any person&apos;s corporate email or live-ping any mailbox in real-time.
+            Performs direct RFC 5321 TCP socket handshakes (<code>EHLO</code>, <code>MAIL FROM</code>, <code>RCPT TO</code>)
+            against target MX servers to verify genuine deliverability and detect catch-all domains.
           </p>
         </div>
 
         {/* Search input */}
         <div style={{ maxWidth: '640px' }}>
           <SearchInput
-            onSubmitUrl={handleUrlSubmit}
             onSubmitDirect={handleDirectSubmit}
+            onSubmitSmtpPing={handleSmtpPingSubmit}
             loading={loading}
           />
           <p style={{
@@ -135,14 +142,18 @@ export default function HomePage() {
             marginTop: '12px',
             marginBottom: 0,
           }}>
-            Professional corporate email enrichment only. No paid credits required.
+            Professional corporate email discovery & live RFC 5321 socket verification. No paid API credits required.
           </p>
         </div>
       </section>
 
       {/* Results section */}
       <section style={{ maxWidth: '900px', margin: '0 auto', padding: '0 24px 72px' }}>
-        {loading && <LoadingState active={loading} />}
+        {loading && (
+          <LoadingState
+            active={loading}
+          />
+        )}
 
         {!loading && error && (
           <div
@@ -157,7 +168,7 @@ export default function HomePage() {
             }}
           >
             <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px' }}>
-              Enrichment Notice
+              Verification Notice
             </p>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
               {error}
@@ -165,16 +176,25 @@ export default function HomePage() {
           </div>
         )}
 
-        {!loading && result && (
+        {/* Email Discovery Lead Result */}
+        {!loading && enrichResult && (
           <LeadCard
-            result={result}
+            result={enrichResult}
             onReverify={handleReverify}
             reverifying={reverifying}
           />
         )}
 
-        {!loading && !result && !error && (
-          /* Feature Pillars */
+        {/* Live SMTP Pinger Result */}
+        {!loading && smtpResult && (
+          <SmtpPingResultCard
+            result={smtpResult}
+            onPingAnother={() => setSmtpResult(null)}
+          />
+        )}
+
+        {/* Feature Pillars (Empty State) */}
+        {!loading && !enrichResult && !smtpResult && !error && (
           <div style={{
             maxWidth: '640px',
             display: 'grid',
@@ -187,10 +207,10 @@ export default function HomePage() {
             marginTop: '8px',
           }}>
             {[
-              { label: 'Autonomous Scraper', desc: 'Zero-API public profile & OpenGraph extraction' },
+              { label: 'Direct Name & Company', desc: 'Find corporate emails by person name and organization' },
               { label: 'Autonomous Domain Engine', desc: 'Enterprise directory & DNS MX heuristics' },
               { label: 'Permutation Inference', desc: '12+ weighted enterprise email formula matrices' },
-              { label: 'Direct TCP SMTP Probes', desc: 'Live RFC 5321 RCPT TO socket verification & catch-all detector' },
+              { label: 'Live Socket SMTP Probes', desc: 'Real-time RFC 5321 RCPT TO mailbox ping & catch-all detector' },
             ].map((feature) => (
               <div
                 key={feature.label}
@@ -199,12 +219,21 @@ export default function HomePage() {
                   background: 'var(--surface)',
                 }}
               >
-                <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px' }}>
+                <div style={{
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: 'var(--text-primary)',
+                  marginBottom: '4px',
+                }}>
                   {feature.label}
-                </p>
-                <p style={{ fontSize: '12px', color: 'var(--text-tertiary)', margin: 0, lineHeight: 1.5 }}>
+                </div>
+                <div style={{
+                  fontSize: '12px',
+                  color: 'var(--text-secondary)',
+                  lineHeight: 1.5,
+                }}>
                   {feature.desc}
-                </p>
+                </div>
               </div>
             ))}
           </div>
